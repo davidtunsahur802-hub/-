@@ -1,0 +1,89 @@
+name: Build SO2 SkinChanger
+
+on:
+push:
+branches: [main]
+workflow_dispatch:
+
+jobs:
+build:
+runs-on: windows-latest
+
+```
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v4
+
+  - name: Setup MSVC
+    uses: ilammy/msvc-dev-cmd@v1
+    with:
+      arch: x64
+
+  - name: Install dependencies
+    shell: pwsh
+    run: |
+      git clone https://github.com/microsoft/vcpkg.git C:\vcpkg_custom
+      C:\vcpkg_custom\bootstrap-vcpkg.bat -disableMetrics
+
+      C:\vcpkg_custom\vcpkg.exe install `
+        imgui[dx11-binding] `
+        nlohmann-json `
+        --triplet x64-windows-static
+
+  - name: Find ImGui headers
+    shell: pwsh
+    run: |
+      Write-Host "Searching for imgui_impl_win32.h..."
+      
+      $header = Get-ChildItem `
+        "C:\vcpkg_custom\installed\x64-windows-static" `
+        -Recurse `
+        -Filter "imgui_impl_win32.h" `
+        -ErrorAction SilentlyContinue
+
+      if (-not $header) {
+        Write-Error "imgui_impl_win32.h was not found."
+        exit 1
+      }
+
+      Write-Host "Found:"
+      $header | ForEach-Object {
+        Write-Host $_.FullName
+      }
+
+  - name: Compile x64 EXE
+    shell: cmd
+    run: |
+      cl.exe /EHsc /O2 /MT /std:c++20 /DWIN32 /D_WINDOWS /DNDEBUG ^
+        /I"C:\vcpkg_custom\installed\x64-windows-static\include" ^
+        /I"C:\vcpkg_custom\installed\x64-windows-static\include\backends" ^
+        /I"C:\vcpkg_custom\installed\x64-windows-static\include\imgui" ^
+        /I"C:\vcpkg_custom\installed\x64-windows-static\include\imgui\backends" ^
+        Qwen_cpp_20261005_0ad6gz1lu.cpp ^
+        /link ^
+        /LIBPATH:"C:\vcpkg_custom\installed\x64-windows-static\lib" ^
+        d3d11.lib ^
+        dxgi.lib ^
+        d3dcompiler.lib ^
+        dwmapi.lib ^
+        /OUT:SkinChanger.exe
+
+  - name: Check EXE
+    shell: pwsh
+    run: |
+      if (-not (Test-Path "SkinChanger.exe")) {
+        Write-Error "SkinChanger.exe was not created."
+        exit 1
+      }
+
+      Write-Host "Build successful:"
+      Get-Item "SkinChanger.exe" | Select-Object Name, Length, LastWriteTime
+
+  - name: Upload EXE
+    uses: actions/upload-artifact@v4
+    with:
+      name: SO2-SkinChanger-x64
+      path: SkinChanger.exe
+      retention-days: 30
+      if-no-files-found: error
+```
