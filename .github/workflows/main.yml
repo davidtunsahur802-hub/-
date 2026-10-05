@@ -33,7 +33,6 @@ jobs:
           git clone https://github.com/microsoft/vcpkg.git $vcpkgDir
           & "$vcpkgDir\bootstrap-vcpkg.bat"
           & "$vcpkgDir\vcpkg.exe" install imgui[directx11-binding,directx11-rendering] nlohmann-json --triplet x64-windows-static
-          echo "VCPKG_CUSTOM=$vcpkgDir" >> $env:GITHUB_ENV
 
       - name: Compile with cl.exe
         shell: cmd
@@ -47,4 +46,20 @@ jobs:
             d3d11.lib dxgi.lib d3dcompiler.lib dwmapi.lib ^
             /OUT:%OUTPUT_EXE%
 
-      - name: Verify
+      - name: Verify output
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${{ env.OUTPUT_EXE }}")) {
+            Write-Error "Build failed: ${{ env.OUTPUT_EXE }} not found"
+            exit 1
+          }
+          $size = (Get-Item "${{ env.OUTPUT_EXE }}").Length
+          Write-Host "Build successful: ${{ env.OUTPUT_EXE }} ($size bytes)"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkinChanger-Win64-${{ github.sha }}
+          path: ${{ env.OUTPUT_EXE }}
+          retention-days: 30
+          if-no-files-found: error
