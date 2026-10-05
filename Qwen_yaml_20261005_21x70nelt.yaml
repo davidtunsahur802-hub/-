@@ -1,0 +1,74 @@
+name: Build SO2 SkinChanger
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  BUILD_TYPE: Release
+  CPP_FILE: Qwen_cpp_20261005_0ad6gz1lu.cpp
+  OUTPUT_EXE: SkinChanger.exe
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install vcpkg dependencies
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
+          & "$env:VCPKG_ROOT\vcpkg.exe" install imgui[directx11-binding,directx11-rendering] nlohmann-json --triplet x64-windows-static
+          echo "VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
+
+      - name: Compile with cl.exe
+        shell: cmd
+        run: |
+          set INCLUDE=%VCPKG_ROOT%\installed\x64-windows-static\include;%INCLUDE%
+          set LIB=%VCPKG_ROOT%\installed\x64-windows-static\lib;%LIB%
+          
+          cl.exe /EHsc /O2 /MT /std:c++20 ^
+            /DWIN32 /D_WINDOWS /DNDEBUG ^
+            /I"%VCPKG_ROOT%\installed\x64-windows-static\include" ^
+            "%CPP_FILE%" ^
+            /link ^
+            /LIBPATH:"%VCPKG_ROOT%\installed\x64-windows-static\lib" ^
+            d3d11.lib dxgi.lib d3dcompiler.lib dwmapi.lib ^
+            /OUT:%OUTPUT_EXE%
+
+      - name: Verify output
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${{ env.OUTPUT_EXE }}")) {
+            Write-Error "Build failed: ${{ env.OUTPUT_EXE }} not found"
+            exit 1
+          }
+          $size = (Get-Item "${{ env.OUTPUT_EXE }}").Length
+          Write-Host "Build successful: ${{ env.OUTPUT_EXE }} ($size bytes)"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkinChanger-Win64-${{ github.sha }}
+          path: ${{ env.OUTPUT_EXE }}
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Create Release on tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.OUTPUT_EXE }}
+          generate_release_notes: true
