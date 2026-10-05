@@ -5,12 +5,8 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-env:
-  CPP_FILE: Qwen_cpp_20261005_0ad6gz1lu.cpp
-  OUTPUT_EXE: SkinChanger.exe
-
 jobs:
-  build-windows:
+  build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,21 +15,28 @@ jobs:
         with:
           arch: x64
 
-      - name: Install vcpkg
+      - name: Install dependencies
         shell: pwsh
         run: |
           git clone https://github.com/microsoft/vcpkg.git C:\vcpkg_custom
           C:\vcpkg_custom\bootstrap-vcpkg.bat -disableMetrics
           C:\vcpkg_custom\vcpkg.exe install imgui[dx11-binding] nlohmann-json --triplet x64-windows-static
 
-      - name: Compile
+      - name: Compile x64 EXE
         shell: cmd
         run: |
-          cl.exe /EHsc /O2 /MT /std:c++20 /DWIN32 /D_WINDOWS /DNDEBUG /I"C:\vcpkg_custom\installed\x64-windows-static\include" %CPP_FILE% /link /LIBPATH:"C:\vcpkg_custom\installed\x64-windows-static\lib" d3d11.lib dxgi.lib d3dcompiler.lib dwmapi.lib /OUT:%OUTPUT_EXE%
+          cl.exe /EHsc /O2 /MT /std:c++20 /DWIN32 /D_WINDOWS /DNDEBUG ^
+            /I"C:\vcpkg_custom\installed\x64-windows-static\include" ^
+            /I"C:\vcpkg_custom\installed\x64-windows-static\include\backends" ^
+            Qwen_cpp_20261005_0ad6gz1lu.cpp ^
+            /link ^
+            /LIBPATH:"C:\vcpkg_custom\installed\x64-windows-static\lib" ^
+            d3d11.lib dxgi.lib d3dcompiler.lib dwmapi.lib ^
+            /OUT:SkinChanger.exe
 
-      - name: Upload
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: SkinChanger-Win64
+          name: SO2-SkinChanger-x64
           path: SkinChanger.exe
           retention-days: 30
+          if-no-files-found: error
