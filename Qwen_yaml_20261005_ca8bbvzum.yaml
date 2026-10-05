@@ -1,0 +1,79 @@
+name: Build SO2 SkinChanger
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  BUILD_TYPE: Release
+  SOLUTION_PATH: SkinChanger.sln
+  OUTPUT_DIR: build\Release
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: Configure CMake (if using CMake)
+        # Если проект на CMake вместо .sln — раскомментировать
+        # uses: lukka/run-cmake@v10
+        # with:
+        #   cmakeListsTxtPath: ${{github.workspace}}/CMakeLists.txt
+        #   configurePreset: 'x64-release'
+        #   buildPreset: 'x64-release'
+        run: echo "Using MSBuild solution directly"
+
+      - name: Restore NuGet packages
+        run: nuget restore ${{ env.SOLUTION_PATH }}
+        continue-on-error: true
+
+      - name: Build Solution
+        shell: cmd
+        run: |
+          msbuild ${{ env.SOLUTION_PATH }} ^
+            /p:Configuration=${{ env.BUILD_TYPE }} ^
+            /p:Platform=x64 ^
+            /p:WindowsTargetPlatformVersion=10.0 ^
+            /m ^
+            /verbosity:minimal
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "${{ env.OUTPUT_DIR }}"
+          Copy-Item -Path "x64\${{ env.BUILD_TYPE }}\*.exe" -Destination "${{ env.OUTPUT_DIR }}\" -ErrorAction SilentlyContinue
+          Copy-Item -Path "x64\${{ env.BUILD_TYPE }}\*.dll" -Destination "${{ env.OUTPUT_DIR }}\" -ErrorAction SilentlyContinue
+          if (Test-Path "skinchanger.cfg") {
+            Copy-Item "skinchanger.cfg" -Destination "${{ env.OUTPUT_DIR }}\"
+          }
+          Get-ChildItem "${{ env.OUTPUT_DIR }}" | Format-Table Name, Length
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkinChanger-Win64-${{ github.sha }}
+          path: ${{ env.OUTPUT_DIR }}
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Create Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.OUTPUT_DIR }}/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') }}
