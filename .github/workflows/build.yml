@@ -23,27 +23,24 @@ jobs:
         run: |
           git clone https://github.com/microsoft/vcpkg.git C:\vcpkg_custom
           C:\vcpkg_custom\bootstrap-vcpkg.bat -disableMetrics
-          C:\vcpkg_custom\vcpkg.exe install "imgui[dx11-binding]" nlohmann-json --triplet x64-windows-static
+          C:\vcpkg_custom\vcpkg.exe install "imgui[dx11-binding,win32-binding]" nlohmann-json --triplet x64-windows-static
 
-      - name: Find ImGui headers
+      - name: Verify ImGui headers
         shell: pwsh
         run: |
-          Write-Host "Searching for imgui_impl_win32.h..."
+          $headers = @(
+            "C:\vcpkg_custom\installed\x64-windows-static\include\imgui.h",
+            "C:\vcpkg_custom\installed\x64-windows-static\include\imgui_impl_dx11.h",
+            "C:\vcpkg_custom\installed\x64-windows-static\include\imgui_impl_win32.h"
+          )
 
-          $header = Get-ChildItem `
-            "C:\vcpkg_custom\installed\x64-windows-static" `
-            -Recurse `
-            -Filter "imgui_impl_win32.h" `
-            -ErrorAction SilentlyContinue
+          foreach ($header in $headers) {
+            if (-not (Test-Path $header)) {
+              Write-Error "Missing header: $header"
+              exit 1
+            }
 
-          if (-not $header) {
-            Write-Error "imgui_impl_win32.h was not found."
-            exit 1
-          }
-
-          Write-Host "Found:"
-          $header | ForEach-Object {
-            Write-Host $_.FullName
+            Write-Host "Found: $header"
           }
 
       - name: Compile x64 EXE
@@ -51,9 +48,6 @@ jobs:
         run: |
           cl.exe /EHsc /O2 /MT /std:c++20 /DWIN32 /D_WINDOWS /DNDEBUG ^
             /I"C:\vcpkg_custom\installed\x64-windows-static\include" ^
-            /I"C:\vcpkg_custom\installed\x64-windows-static\include\backends" ^
-            /I"C:\vcpkg_custom\installed\x64-windows-static\include\imgui" ^
-            /I"C:\vcpkg_custom\installed\x64-windows-static\include\imgui\backends" ^
             Qwen_cpp_20261005_0ad6gz1lu.cpp ^
             /link ^
             /LIBPATH:"C:\vcpkg_custom\installed\x64-windows-static\lib" ^
@@ -71,8 +65,8 @@ jobs:
             exit 1
           }
 
-          Write-Host "Build successful:"
-          Get-Item "SkinChanger.exe" | Select-Object Name, Length, LastWriteTime
+          Get-Item "SkinChanger.exe" |
+            Select-Object Name, Length, LastWriteTime
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
